@@ -29,7 +29,8 @@ public class Violation implements Serializable, Comparable<Violation> {
     private Integer startLine;
     private String group;
 
-    private ViolationBuilder() {}
+    private ViolationBuilder() {
+    }
 
     public Violation build() {
       return new Violation(this);
@@ -117,9 +118,14 @@ public class Violation implements Serializable, Comparable<Violation> {
   }
 
   private static final long serialVersionUID = -6052921679385466168L;
-  /** A {@link #file} used when there is no file specified in the parsed report. */
+  /**
+   * A {@link #file} used when there is no file specified in the parsed report.
+   */
   public static final String NO_FILE = "-";
-  /** A {@link #startLine} used when there is no line specified in the parsed report. */
+  /**
+   * A {@link #startLine} used when there is no line specified in the parsed
+   * report.
+   */
   public static final Integer NO_LINE = 0;
 
   public static ViolationBuilder violationBuilder() {
@@ -136,7 +142,8 @@ public class Violation implements Serializable, Comparable<Violation> {
   /** The algorithm, the format, used. */
   private final Parser parser;
   /**
-   * Intended as the tool used to find the violation. Like Detekt, when it is being used to find
+   * Intended as the tool used to find the violation. Like Detekt, when it is
+   * being used to find
    * violations and report them in the {@link Parser#CHECKSTYLE} format.
    */
   private String reporter;
@@ -144,7 +151,8 @@ public class Violation implements Serializable, Comparable<Violation> {
   private final String rule;
   private final String category;
   /**
-   * Something that identifies a group that this violation belongs to. First introduced with {@link
+   * Something that identifies a group that this violation belongs to. First
+   * introduced with {@link
    * CPPCheckParser} to record what error tag each violation belongs to.
    */
   private final String group;
@@ -183,8 +191,7 @@ public class Violation implements Serializable, Comparable<Violation> {
     this.endColumn = vb.endColumn;
     this.severity = checkNotNull(vb.severity, "severity");
     this.message = checkNotNull(emptyToNull(vb.message), "message");
-    this.file =
-        checkNotNull(emptyToNull(vb.file), "file").replace("\\\\", "\\").replaceAll("\\\\", "/");
+    this.file = checkNotNull(emptyToNull(vb.file), "file").replace("\\\\", "\\").replaceAll("\\\\", "/");
     this.source = nullToEmpty(vb.source);
     this.rule = nullToEmpty(vb.rule);
     this.category = nullToEmpty(vb.category);
@@ -364,7 +371,8 @@ public class Violation implements Serializable, Comparable<Violation> {
   }
 
   /**
-   * Some parsers may find values that are specific to that kind of analysis. Those can be made
+   * Some parsers may find values that are specific to that kind of analysis.
+   * Those can be made
    * available through this map.
    */
   public Map<String, String> getSpecifics() {
@@ -439,30 +447,33 @@ public class Violation implements Serializable, Comparable<Violation> {
   }
 
   private String comparingString(final Violation o) {
-    return o.file
-        + "_"
-        + (Integer.MAX_VALUE - o.getStartLine())
-        + "_"
-        + o.getParser()
-        + "_"
-        + o.getMessage()
-        + "_"
-        + o.getReporter()
-        + "_"
-        + o.getEndLine()
-        + "_"
-        + o.getEndColumn()
-        + "_"
-        + o.getColumn()
-        + "_"
-        + o.getSeverity()
-        + "_"
-        + o.getSource()
-        + "_"
-        + o.getRule()
-        + "_"
-        + o.getCategory()
-        + "_"
-        + o.getGroup();
+    StringBuilder compare = new StringBuilder();
+    compare.append(o.file);
+    compare.append("_");
+    compare.append(Integer.MAX_VALUE - o.getStartLine());
+    compare.append("_");
+    compare.append(o.getParser());
+    compare.append("_");
+    compare.append(o.getMessage());
+    compare.append("_");
+    compare.append(o.getReporter());
+    compare.append("_");
+    compare.append(o.getEndLine());
+    compare.append("_");
+    compare.append(o.getEndColumn());
+    compare.append("_");
+    compare.append(o.getColumn());
+    compare.append("_");
+    compare.append(o.getSeverity());
+    compare.append("_");
+    compare.append(o.getSource());
+    compare.append("_");
+    compare.append(o.getRule());
+    compare.append("_");
+    compare.append(o.getCategory());
+    compare.append("_");
+    compare.append(o.getGroup());
+    o.getSpecifics().forEach((k, v) -> compare.append("_").append(k).append(v));
+    return compare.toString();
   }
 }

@@ -3,6 +3,11 @@ package se.bjurr.violations.lib.parsers;
 import static se.bjurr.violations.lib.model.Violation.violationBuilder;
 import static se.bjurr.violations.lib.util.Utils.isNullOrEmpty;
 
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParseException;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -10,13 +15,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonDeserializationContext;
-import com.google.gson.JsonDeserializer;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonParseException;
-
 import se.bjurr.violations.lib.ViolationsLogger;
 import se.bjurr.violations.lib.model.SEVERITY;
 import se.bjurr.violations.lib.model.Violation;
@@ -34,6 +32,7 @@ import se.bjurr.violations.lib.reports.Parser;
 import se.bjurr.violations.lib.util.Utils;
 
 public class SarifParser implements ViolationsParser {
+  public static final String SARIF_RESULTS_CORRELATION_GUID = "correlationGuid";
 
   private static class ResultDeserializer implements JsonDeserializer<Level> {
 
@@ -53,11 +52,10 @@ public class SarifParser implements ViolationsParser {
   @Override
   public Set<Violation> parseReportOutput(
       final String reportContent, final ViolationsLogger violationsLogger) throws Exception {
-    final SarifSchema report =
-        new GsonBuilder()
-            .registerTypeAdapter(Level.class, new ResultDeserializer())
-            .create()
-            .fromJson(reportContent, SarifSchema.class);
+    final SarifSchema report = new GsonBuilder()
+        .registerTypeAdapter(Level.class, new ResultDeserializer())
+        .create()
+        .fromJson(reportContent, SarifSchema.class);
 
     final Set<Violation> violations = new TreeSet<>();
     if (report.getRuns() == null) {
@@ -73,7 +71,16 @@ public class SarifParser implements ViolationsParser {
       }
       final List<Artifact> artifacts = new ArrayList<>(run.getArtifacts());
       final Map<String, String> helpMap = this.extractHelpText(run);
+      final Map<String, String> ruleDescriptionMap = this.extractRuleDescriptionText(run);
+
       for (final Result result : run.getResults()) {
+        // Multiple instances of the same rule id / message / location are not added to
+        // the violations collection. Parse unique identifier fields if they exist
+        final Map<String, String> specifics = new HashMap<>();
+        final String correlationGuid = result.getCorrelationGuid();
+        if (!isNullOrEmpty(correlationGuid)) {
+          specifics.put(SARIF_RESULTS_CORRELATION_GUID, correlationGuid);
+        }
 
         final String ruleId = result.getRuleId();
         final String message = this.extractMessage(result.getMessage());
@@ -121,6 +128,7 @@ public class SarifParser implements ViolationsParser {
                     .setMessage(fullMessage.toString().trim())
                     .setSeverity(this.toSeverity(level))
                     .setReporter(reporter)
+                    .setSpecifics(specifics)
                     .build());
           }
         } else {
@@ -130,14 +138,27 @@ public class SarifParser implements ViolationsParser {
                   .setFile(Violation.NO_FILE)
                   .setStartLine(Violation.NO_LINE)
                   .setRule(ruleId)
-                  .setMessage(this.getRuleHelpOrId(helpMap, ruleId))
+                  .setMessage(this.getRuleDescriptionOrMessage(ruleDescriptionMap, ruleId, message))
                   .setSeverity(this.toSeverity(level))
                   .setReporter(reporter)
+                  .setSpecifics(specifics)
                   .build());
         }
       }
     }
     return violations;
+  }
+
+  private String getRuleDescriptionOrMessage(
+      final Map<String, String> ruleDescriptionMap, final String ruleId, final String message) {
+    final StringBuilder fullMessage = new StringBuilder();
+    if (ruleDescriptionMap.containsKey(ruleId)) {
+      fullMessage.append(ruleDescriptionMap.get(ruleId));
+    }
+    if (fullMessage.indexOf(message) < 0) {
+      fullMessage.append("\n\n").append(message);
+    }
+    return fullMessage.toString();
   }
 
   private String getRuleHelpOrId(final Map<String, String> helpMap, final String ruleId) {
@@ -186,6 +207,37 @@ public class SarifParser implements ViolationsParser {
       }
     }
     return helpMap;
+  }
+
+  private Map<String, String> extractRuleDescriptionText(final Run run) {
+    final Map<String, String> ruleDescriptionMap = new HashMap<>();
+    if (run.getTool() != null
+        && run.getTool().getDriver() != null
+        && run.getTool().getDriver().getRules() != null) {
+      for (final ReportingDescriptor r : run.getTool().getDriver().getRules()) {
+        final StringBuilder fullMessage = new StringBuilder();
+
+        if (r.getId() == null || isNullOrEmpty(r.getId())) {
+          continue;
+        }
+
+        fullMessage.append(r.getId());
+        if (r.getName() != null && !isNullOrEmpty(r.getName())) {
+          fullMessage.append(": ").append(r.getName());
+        }
+
+        if (r.getShortDescription() != null
+            && !isNullOrEmpty(r.getShortDescription().getMarkdown())) {
+          fullMessage.append("\n\n").append(r.getShortDescription().getMarkdown());
+        } else if (r.getShortDescription() != null
+            && !isNullOrEmpty(r.getShortDescription().getText())) {
+          fullMessage.append("\n\n").append(r.getShortDescription().getText());
+        }
+
+        ruleDescriptionMap.put(r.getId(), fullMessage.toString());
+      }
+    }
+    return ruleDescriptionMap;
   }
 
   private SEVERITY toSeverity(final Level level) {
